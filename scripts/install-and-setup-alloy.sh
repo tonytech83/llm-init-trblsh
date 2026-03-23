@@ -20,13 +20,47 @@ tee /etc/alloy/config.alloy <<'EOF'
 // 1. Read systemd journal
 // Priorities: value between 0 and 7 (emerg, alert, crit, error, warning, notice, info, or debug)
 // ------------------------------------------------------------
-loki.source.journal "read" {
+loki.source.journal "read_err" {
         forward_to    = [loki.write.local.receiver]
         relabel_rules = loki.relabel.relabel_journal.rules
-        matches       = "PRIORITY=0 PRIORITY=1 PRIORITY=2 PRIORITY=3"
+        matches       = "PRIORITY=3"
         labels        = {
-                job     = "journald",
-                host    = constants.hostname,
+                job   = "journald",
+                host  = constants.hostname,
+                level = "err",
+        }
+}
+
+loki.source.journal "read_crit" {
+        forward_to    = [loki.write.local.receiver]
+        relabel_rules = loki.relabel.relabel_journal.rules
+        matches       = "PRIORITY=2"
+        labels        = {
+                job   = "journald",
+                host  = constants.hostname,
+                level = "crit",
+        }
+}
+
+loki.source.journal "read_alert" {
+        forward_to    = [loki.write.local.receiver]
+        relabel_rules = loki.relabel.relabel_journal.rules
+        matches       = "PRIORITY=1"
+        labels        = {
+                job   = "journald",
+                host  = constants.hostname,
+                level = "alert",
+        }
+}
+
+loki.source.journal "read_emerg" {
+        forward_to    = [loki.write.local.receiver]
+        relabel_rules = loki.relabel.relabel_journal.rules
+        matches       = "PRIORITY=0"
+        labels        = {
+                job   = "journald",
+                host  = constants.hostname,
+                level = "emerg",
         }
 }
 
@@ -40,20 +74,13 @@ loki.relabel "relabel_journal" {
                 source_labels = ["__journal__systemd_unit"]
                 target_label  = "unit"
         }
-
         rule {
                 source_labels = ["__journal__boot_id"]
                 target_label  = "boot_id"
         }
-
         rule {
                 source_labels = ["__journal__transport"]
                 target_label  = "transport"
-        }
-
-        rule {
-                source_labels = ["__journal__priority_keyword"]
-                target_label  = "level"
         }
 }
 
@@ -62,7 +89,7 @@ loki.relabel "relabel_journal" {
 // ------------------------------------------------------------
 loki.write "local" {
         endpoint {
-                url = "http://192.168.56.12:3100/loki/api/v1/push"
+                url = "http://192.168.56.14:3100/loki/api/v1/push"
         }
 }
 EOF
