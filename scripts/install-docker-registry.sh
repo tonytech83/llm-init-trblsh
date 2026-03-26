@@ -7,7 +7,7 @@ echo '* Adjust the /etc/docker/daemon.json file ...'
 
 tee /etc/docker/daemon.json <<'EOF'
 {
-    "insecure-registries" : [ "192.168.56.12:5000" ]
+    "insecure-registries" : [ "192.168.56.15:5000" ]
 }
 EOF
 

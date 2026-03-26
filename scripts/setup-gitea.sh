@@ -2,8 +2,8 @@
 
 echo "* Check if Gitea is running and ready ..."
 while true; do 
-  echo 'Trying to connect to gitea at http://192.168.56.12:3000 ...'; 
-  if [ $(curl -s -o /dev/null -w "%{http_code}" http://192.168.56.12:3000) == "200" ]; then 
+  echo 'Trying to connect to gitea at http://192.168.56.15:3000 ...'; 
+  if [ $(curl -s -o /dev/null -w "%{http_code}" http://192.168.56.15:3000) == "200" ]; then 
     echo '... connected.'; 
     break; 
   else 
@@ -28,7 +28,7 @@ install -o root -g root -m 0755 act_runner /usr/local/bin/act_runner
 
 echo "* Register the Gitea Runner ..."
 cd /home/vagrant
-sudo -u vagrant -- act_runner register --no-interactive --instance http://192.168.56.12:3000 --token $(cat /tmp/gitea/runner-token.txt)
+sudo -u vagrant -- act_runner register --no-interactive --instance http://192.168.56.15:3000 --token $(cat /tmp/gitea/runner-token.txt)
 
 echo "* Create a SystemD service unit for the Gitea Runner ..."
 cat > /etc/systemd/system/act_runner.service <<'EOF'
