@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import FastAPI, Request
@@ -7,16 +8,17 @@ from mcp.client.stdio import stdio_client
 
 app = FastAPI()
 
-LOKI_URL = "http://192.168.56.14:3100"
+LLM_API = "http://192.168.0.88:11434/api/generate"
+LLM_TIMEOUT = 300
 SERVER_PARAMS = StdioServerParameters(command="python", args=["./server.py"])
 
 # Set of active alerts
-active_alerts: set[str] = set()
+active_alerts = set()
 
 
-def logs_to_str(logs) -> str:
+def logs_to_str(logs):
     logs_dict = json.loads(logs)
-    result: list[str] = []
+    result = []
 
     for service, log_text in logs_dict.items():
         result.append(f"=== {service} ===")
@@ -33,10 +35,27 @@ def prep_message_to_llm(logs: str, host: str, ip: str) -> str:
         f"The following services have SIMULTANEOUSLY failed on host '{host}' ({ip}).",
         "This may indicate a common root cause.",
         "\n",
-        "Analyze the logs for each service and:",
-        "1. Identify the most likely root cause for each service",
-        "2. Determine if the failures are related",
-        "3. Suggest troubleshooting steps in order of priority",
+        "Analyze the logs and respond ONLY with a valid JSON object in this exact structure:",
+        "\n",
+        "{",
+        '  "likely_cause": "<one or two sentences about the most probable reason>",',
+        '  "log_summary": "<brief summary of pattern — frequency, timing, consistency>",',
+        '  "investigation_steps": [',
+        '    {"description": "<action description>", "command": "<exact command to run>"},',
+        '    {"description": "<action description>", "command": "<exact command to run>"}',
+        "  ],",
+        '  "possible_causes": [',
+        '    "<most likely cause>",',
+        '    "<second most likely cause>",',
+        '    "<third most likely cause>"',
+        "  ]",
+        "}",
+        "\n",
+        "Rules:",
+        "- Respond with ONLY the JSON object, no text before or after it",
+        "- No markdown, no code blocks, no backticks",
+        "- All commands must be safe read-only Linux commands",
+        "- Commands must be directly executable on the server without modification",
         "\n",
     ]
 
@@ -105,14 +124,15 @@ async def handle_alert(request: Request):
             )
             logs = result.content[0].text
             print("=" * 80)
-            # logs_to_str(logs)
             msg = prep_message_to_llm(logs, hostname, ip_address)
-            print(msg)
             print(f"*** Logs fetched successfully")
             print("=" * 80)
 
     # 3. ANALYZE: Send logs to Ollama for analysis
     analysis = await ask_ollama(msg)
+    print("=== LLM ANALYSIS ===")
+    print(json.dumps(analysis, indent=2))
+    print("====================")
 
     # Step 4: Send to Telegram (coming next)
     # send_telegram(analysis)
@@ -120,16 +140,64 @@ async def handle_alert(request: Request):
     return {"status": "processed"}
 
 
-async def ask_ollama(msg: srt):
+async def fetch_logs_from_loki(host: str, minutes: int = 10) -> list[str]:
+    now = datetime.now(timezone.utc)
+    start = now - timedelta(minutes=minutes)
+
+    start_ns = int(start.timestamp() * 1e9)
+    end_ns = int(now.timestamp() * 1e9)
+
+    query = f'{{job="journald", host="{host}", level=~"err|crit|alert|emerg"}}'
+
     async with httpx.AsyncClient() as client:
-        llm_response = await client.post(
-            "http://localhost:11434/api/generate",
-            json={"model": "qwen2.5:3b", "prompt": msg, "stream": False},
+        response = await client.get(
+            f"{LOKI_URL}/loki/api/v1/query_range",
+            params={
+                "query": query,
+                "start": start_ns,
+                "end": end_ns,
+                "limit": 100,
+            },
         )
-        return resp.llm_response()["response"]
+        response.raise_for_status()
+        result = response.json()
+
+    logs = []
+    for stream in result.get("data", {}).get("result", []):
+        unit = stream.get("stream", {}).get("unit", "unknown")
+        for timestamp, line in stream.get("values", []):
+            # Convert nanosecond timestamp to readable time
+            ts = datetime.fromtimestamp(int(timestamp) / 1e9, tz=timezone.utc)
+            logs.append(
+                {
+                    "time": ts.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                    "unit": unit,
+                    "message": line,
+                }
+            )
+
+    return logs
 
 
-def send_telegram(message: str):
+async def ask_ollama(msg):
+    async with httpx.AsyncClient(timeout=LLM_TIMEOUT) as client:
+        llm_response = await client.post(
+            LLM_API, json={"model": "qwen2.5:3b", "prompt": msg, "stream": False}
+        )
+        raw = llm_response.json()["response"]
+
+        # Strip markdown code blocks if LLM adds them despite instructions
+        clean = raw.strip()
+        if clean.startswith("```"):
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        clean = clean.strip()
+
+        return json.loads(clean)
+
+
+def send_telegram(message):
     print(f"Sending to Telegram: {message}")
     # Add your telegram bot code here...
 
