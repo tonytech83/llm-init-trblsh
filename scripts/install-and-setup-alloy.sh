@@ -15,7 +15,10 @@ apt-get update
 apt-get install -y alloy
 
 echo "* Configure Alloy on Linux ..."
-tee /etc/alloy/config.alloy <<'EOF'
+HOST_IP_ONE=$(hostname -I | awk '{print $1}')
+HOST_IP_TWO=$(hostname -I | awk '{print $2}')
+
+tee /etc/alloy/config.alloy <<EOF
 // ------------------------------------------------------------
 // 1. Read systemd journal
 // Priorities: value between 0 and 7 (emerg, alert, crit, error, warning, notice, info, or debug)
@@ -28,6 +31,7 @@ loki.source.journal "read_err" {
                 job   = "journald",
                 host  = constants.hostname,
                 level = "err",
+                ip    = "${HOST_IP_TWO}",
         }
 }
 
@@ -39,6 +43,7 @@ loki.source.journal "read_crit" {
                 job   = "journald",
                 host  = constants.hostname,
                 level = "crit",
+                ip    = "${HOST_IP_TWO}",
         }
 }
 
@@ -50,6 +55,7 @@ loki.source.journal "read_alert" {
                 job   = "journald",
                 host  = constants.hostname,
                 level = "alert",
+                ip    = "${HOST_IP_TWO}",
         }
 }
 
@@ -61,6 +67,7 @@ loki.source.journal "read_emerg" {
                 job   = "journald",
                 host  = constants.hostname,
                 level = "emerg",
+                ip    = "${HOST_IP_TWO}",
         }
 }
 
