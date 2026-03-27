@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import FastAPI, Request
@@ -138,45 +137,6 @@ async def handle_alert(request: Request):
     # send_telegram(analysis)
 
     return {"status": "processed"}
-
-
-async def fetch_logs_from_loki(host: str, minutes: int = 10) -> list[str]:
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(minutes=minutes)
-
-    start_ns = int(start.timestamp() * 1e9)
-    end_ns = int(now.timestamp() * 1e9)
-
-    query = f'{{job="journald", host="{host}", level=~"err|crit|alert|emerg"}}'
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{LOKI_URL}/loki/api/v1/query_range",
-            params={
-                "query": query,
-                "start": start_ns,
-                "end": end_ns,
-                "limit": 100,
-            },
-        )
-        response.raise_for_status()
-        result = response.json()
-
-    logs = []
-    for stream in result.get("data", {}).get("result", []):
-        unit = stream.get("stream", {}).get("unit", "unknown")
-        for timestamp, line in stream.get("values", []):
-            # Convert nanosecond timestamp to readable time
-            ts = datetime.fromtimestamp(int(timestamp) / 1e9, tz=timezone.utc)
-            logs.append(
-                {
-                    "time": ts.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                    "unit": unit,
-                    "message": line,
-                }
-            )
-
-    return logs
 
 
 async def ask_ollama(msg):
