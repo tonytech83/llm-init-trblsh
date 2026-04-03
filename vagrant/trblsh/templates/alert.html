@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Incident {{ incident_id[:8] }}</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html {
+        overflow-y: scroll;
+      }
+      body {
+        font-family: monospace;
+        background: #0f0f0f;
+        color: #e0e0e0;
+        padding: 24px;
+      }
+
+      .header {
+        border-left: 4px solid #e74c3c;
+        padding: 12px 16px;
+        background: #1a1a1a;
+        margin-bottom: 24px;
+      }
+      .header h1 {
+        font-size: 18px;
+        color: #e74c3c;
+        margin-bottom: 8px;
+      }
+      .header .meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 8px;
+      }
+      .meta-item {
+        font-size: 13px;
+      }
+      .meta-item span {
+        color: #888;
+      }
+
+      .status {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 3px;
+        font-size: 12px;
+        font-weight: bold;
+      }
+      .status-PENDING {
+        background: #7d4e00;
+        color: #ffa500;
+      }
+      .status-EXECUTING {
+        background: #003d7d;
+        color: #4da6ff;
+      }
+      .status-RESOLVED {
+        background: #0d4d1a;
+        color: #2ecc71;
+      }
+      .status-EXPIRED {
+        background: #2a2a2a;
+        color: #888;
+      }
+
+      .section-title {
+        font-size: 13px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 24px 0 12px;
+      }
+
+      .analysis-card {
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        border-radius: 4px;
+        margin-bottom: 16px;
+        overflow: hidden;
+      }
+      .analysis-header {
+        padding: 10px 16px;
+        background: #222;
+        border-bottom: 1px solid #2a2a2a;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12px;
+        color: #888;
+      }
+      .analysis-header .badge {
+        background: #e74c3c;
+        color: #fff;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+      }
+      .analysis-body {
+        padding: 16px;
+      }
+
+      .label {
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+      }
+      .value {
+        font-size: 13px;
+        color: #e0e0e0;
+        margin-bottom: 16px;
+        line-height: 1.6;
+      }
+
+      .services {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 16px;
+      }
+      .service-tag {
+        background: #2a2a2a;
+        border: 1px solid #3a3a3a;
+        padding: 3px 10px;
+        border-radius: 3px;
+        font-size: 12px;
+        color: #e0e0e0;
+      }
+
+      .steps {
+        list-style: none;
+      }
+      .step {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+      .step-num {
+        min-width: 24px;
+        height: 24px;
+        background: #2a2a2a;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        color: #888;
+        flex-shrink: 0;
+        margin-top: 2px;
+      }
+      .step-content {
+        flex: 1;
+      }
+      .step-desc {
+        font-size: 13px;
+        margin-bottom: 4px;
+      }
+      .step-cmd {
+        background: #0a0a0a;
+        border: 1px solid #2a2a2a;
+        border-left: 3px solid #e74c3c;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: #e74c3c;
+        border-radius: 2px;
+      }
+
+      .causes {
+        list-style: none;
+      }
+      .cause {
+        padding: 6px 0;
+        font-size: 13px;
+        border-bottom: 1px solid #1e1e1e;
+        display: flex;
+        gap: 8px;
+      }
+      .cause:last-child {
+        border-bottom: none;
+      }
+      .cause-num {
+        color: #e74c3c;
+        min-width: 20px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn-execute {
+        background: #003d7d;
+        color: #4da6ff;
+        border: 1px solid #4da6ff;
+      }
+      .btn-resolve {
+        background: #0d4d1a;
+        color: #2ecc71;
+        border: 1px solid #2ecc71;
+      }
+      .btn-execute:hover {
+        background: #004d99;
+      }
+      .btn-resolve:hover {
+        background: #0f5c1e;
+      }
+
+      .divider {
+        border: none;
+        border-top: 1px solid #2a2a2a;
+        margin: 8px 0;
+      }
+
+      /* History accordion */
+      .history-toggle {
+        width: 100%;
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        color: #888;
+        font-family: monospace;
+        font-size: 13px;
+        padding: 10px 16px;
+        cursor: pointer;
+        text-align: left;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .history-toggle:hover {
+        background: #222;
+        color: #e0e0e0;
+      }
+      .history-toggle .arrow {
+        transition: transform 0.2s;
+      }
+      .history-toggle.open .arrow {
+        transform: rotate(180deg);
+      }
+      .history-list {
+        display: none;
+      }
+      .history-list.open {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>🔴 Incident {{ incident_id[:8] }}...</h1>
+      <div class="meta">
+        <div class="meta-item"><span>Host: </span>{{ hostname }}</div>
+        <div class="meta-item"><span>IP: </span>{{ ip_address }}</div>
+        <div class="meta-item"><span>Fired: </span>{{ fired_at }}</div>
+        <div class="meta-item"><span>Failures: </span>{{ failure_count }}</div>
+        <div class="meta-item">
+          <span>Status: </span
+          ><span class="status status-{{ status }}">{{ status }}</span>
+        </div>
+        <div class="meta-item"><span>Fingerprint: </span>{{ fingerprint }}</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-back" onclick="window.location.href = '/'">
+        ◀ Back
+      </button>
+      <button class="btn btn-execute" onclick="alert('Goal 2 - coming soon!')">
+        ▶ Execute Investigation
+      </button>
+      <button
+        class="btn btn-resolve"
+        onclick="alert('Mark as resolved - coming soon!')"
+      >
+        ✓ Mark Resolved
+      </button>
+    </div>
+
+    <!-- Latest analysis -->
+    {% if analyses %} {% set latest = analyses[0] %}
+
+    <div class="section-title">Latest Analysis — {{ latest.created_at }}</div>
+
+    <div class="analysis-card">
+      <div class="analysis-header">
+        <span>{{ latest.created_at }}</span>
+        <span class="badge">LATEST</span>
+      </div>
+      <div class="analysis-body">
+        <div class="label">Failed Services</div>
+        <div class="services">
+          {% for svc in latest.failed_services %}
+          <span class="service-tag">⚙ {{ svc }}</span>
+          {% endfor %}
+        </div>
+
+        <div class="label">Likely Cause</div>
+        <div class="value">{{ latest.analysis.message.likely_cause }}</div>
+
+        <div class="label">Log Summary</div>
+        <div class="value">{{ latest.analysis.message.log_summary }}</div>
+
+        <hr class="divider" />
+
+        <div class="label">Investigation Steps</div>
+        <ul class="steps">
+          {% for step in latest.analysis.message.investigation_steps %}
+          <li class="step">
+            <div class="step-num">{{ loop.index }}</div>
+            <div class="step-content">
+              <div class="step-desc">{{ step.description }}</div>
+              <div class="step-cmd">$ {{ step.command }}</div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <hr class="divider" />
+
+        <div class="label">Possible Causes</div>
+        <ul class="causes">
+          {% for cause in latest.analysis.message.possible_causes %}
+          <li class="cause">
+            <span class="cause-num">{{ loop.index }}.</span>
+            <span>{{ cause }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <!-- History dropdown -->
+    {% if analyses|length > 1 %}
+    <button class="history-toggle" onclick="toggleHistory(this)">
+      <span>📁 Previous analyses ({{ analyses|length - 1 }})</span>
+      <span class="arrow">▼</span>
+    </button>
+    <div class="history-list">
+      {% for a in analyses[1:] %}
+      <div class="analysis-card">
+        <div class="analysis-header">
+          <span>Run {{ loop.index + 1 }} — {{ a.created_at }}</span>
+          <span>{{ a.failed_services | join(', ') }}</span>
+        </div>
+        <div class="analysis-body">
+          <div class="label">Failed Services</div>
+          <div class="services">
+            {% for svc in a.failed_services %}
+            <span class="service-tag">⚙ {{ svc }}</span>
+            {% endfor %}
+          </div>
+
+          <div class="label">Likely Cause</div>
+          <div class="value">{{ a.analysis.message.likely_cause }}</div>
+
+          <div class="label">Log Summary</div>
+          <div class="value">{{ a.analysis.message.log_summary }}</div>
+
+          <hr class="divider" />
+
+          <div class="label">Investigation Steps</div>
+          <ul class="steps">
+            {% for step in a.analysis.message.investigation_steps %}
+            <li class="step">
+              <div class="step-num">{{ loop.index }}</div>
+              <div class="step-content">
+                <div class="step-desc">{{ step.description }}</div>
+                <div class="step-cmd">$ {{ step.command }}</div>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+
+          <hr class="divider" />
+
+          <div class="label">Possible Causes</div>
+          <ul class="causes">
+            {% for cause in a.analysis.message.possible_causes %}
+            <li class="cause">
+              <span class="cause-num">{{ loop.index }}.</span>
+              <span>{{ cause }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %} {% endif %}
+
+    <script>
+      function toggleHistory(btn) {
+        btn.classList.toggle("open");
+        const list = btn.nextElementSibling;
+        list.classList.toggle("open");
+      }
+    </script>
+  </body>
+</html>

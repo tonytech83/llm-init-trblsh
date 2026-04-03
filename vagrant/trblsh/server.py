@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import asyncssh
 from mcp.server.fastmcp import FastMCP
@@ -14,7 +13,7 @@ LOG_LINES = 50
 
 def load_ignore_list() -> set[str]:
     try:
-        with Path(IGNORE_LIST_PATH).open("r") as f:
+        with open(IGNORE_LIST_PATH, "r") as f:
             return {
                 line.strip() for line in f if line.strip() and not line.startswith("#")
             }
@@ -25,21 +24,17 @@ def load_ignore_list() -> set[str]:
 @mcp.tool()
 async def get_failed_services(hostname: str, ip_address: str) -> str:
     """
-    Returns: JSON string of failed service names.
-
     SSH into the target host and get all currently failed systemd services.
     Filters out services in the ignore list.
+    Returns: JSON string of failed service names.
     """
     ignore_list = load_ignore_list()
 
     async with asyncssh.connect(
-        ip_address,
-        username=SSH_USER,
-        client_keys=[SSH_KEY],
-        known_hosts=None,
+        ip_address, username=SSH_USER, client_keys=[SSH_KEY], known_hosts=None
     ) as conn:
         result = await conn.run(
-            "systemctl list-units --state=failed --no-legend --no-pager",
+            "systemctl list-units --state=failed --no-legend --no-pager"
         )
 
     services = []
@@ -57,19 +52,15 @@ async def get_failed_services(hostname: str, ip_address: str) -> str:
 @mcp.tool()
 async def get_service_logs(hostname: str, ip_address: str, services: str) -> str:
     """
-    Returns: JSON string mapping service name to its logs.
-
     SSH into the target host and fetch the last LOG_LINES lines
     of journalctl output for each service.
+    Returns: JSON string mapping service name to its logs.
     """
     service_list = json.loads(services)
     logs = {}
 
     async with asyncssh.connect(
-        ip_address,
-        username=SSH_USER,
-        client_keys=[SSH_KEY],
-        known_hosts=None,
+        ip_address, username=SSH_USER, client_keys=[SSH_KEY], known_hosts=None
     ) as conn:
         for unit in service_list:
             result = await conn.run(f"journalctl -u {unit} -n {LOG_LINES} --no-pager")

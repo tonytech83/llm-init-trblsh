@@ -3,3 +3,5 @@ httpx
 mcp
 uvicorn
 asyncssh
+requests
+jinja2

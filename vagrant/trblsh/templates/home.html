@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Troubleshooter — Incidents</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html {
+        overflow-y: scroll;
+      }
+      body {
+        font-family: monospace;
+        background: #0f0f0f;
+        color: #e0e0e0;
+        padding: 24px;
+      }
+
+      .page-header {
+        margin-bottom: 32px;
+        border-left: 4px solid #e74c3c;
+        padding: 12px 16px;
+        background: #1a1a1a;
+      }
+      .page-header h1 {
+        font-size: 20px;
+        color: #e74c3c;
+      }
+      .page-header p {
+        font-size: 12px;
+        color: #888;
+        margin-top: 4px;
+      }
+
+      .summary {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 32px;
+      }
+      .summary-card {
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        border-radius: 4px;
+        padding: 16px 24px;
+        flex: 1;
+        text-align: center;
+      }
+      .summary-card .count {
+        font-size: 32px;
+        font-weight: bold;
+      }
+      .summary-card .label {
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-top: 4px;
+      }
+      .count-pending {
+        color: #ffa500;
+      }
+      .count-executing {
+        color: #4da6ff;
+      }
+      .count-resolved {
+        color: #2ecc71;
+      }
+      .count-expired {
+        color: #888;
+      }
+
+      .section-title {
+        font-size: 13px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 12px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      thead tr {
+        background: #1a1a1a;
+        border-bottom: 2px solid #2a2a2a;
+      }
+      thead th {
+        padding: 10px 14px;
+        text-align: left;
+        font-size: 11px;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      tbody tr {
+        border-bottom: 1px solid #1a1a1a;
+        transition: background 0.1s;
+      }
+      tbody tr:hover {
+        background: #1a1a1a;
+      }
+      td {
+        padding: 12px 14px;
+        vertical-align: middle;
+      }
+
+      .hostname {
+        color: #e0e0e0;
+        font-weight: bold;
+      }
+      .ip {
+        color: #888;
+        font-size: 12px;
+      }
+      .fired-at {
+        color: #888;
+        font-size: 12px;
+      }
+      .failures {
+        color: #e74c3c;
+        font-weight: bold;
+      }
+
+      .status {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: bold;
+      }
+      .status-PENDING {
+        background: #7d4e00;
+        color: #ffa500;
+      }
+      .status-EXECUTING {
+        background: #003d7d;
+        color: #4da6ff;
+      }
+      .status-RESOLVED {
+        background: #0d4d1a;
+        color: #2ecc71;
+      }
+      .status-EXPIRED {
+        background: #2a2a2a;
+        color: #888;
+      }
+
+      .btn-view {
+        background: transparent;
+        border: 1px solid #3a3a3a;
+        color: #888;
+        font-family: monospace;
+        font-size: 12px;
+        padding: 5px 12px;
+        border-radius: 3px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+      }
+      .btn-view:hover {
+        border-color: #e74c3c;
+        color: #e74c3c;
+      }
+
+      .empty {
+        text-align: center;
+        padding: 60px;
+        color: #444;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-header">
+      <h1>🖥 Troubleshooter</h1>
+      <p>Incident overview — all hosts</p>
+    </div>
+
+    <!-- Summary counts -->
+    <div class="summary">
+      <div class="summary-card">
+        <div class="count count-pending">
+          {{ incidents | selectattr('status', 'equalto', 'PENDING') | list |
+          length }}
+        </div>
+        <div class="label">Pending</div>
+      </div>
+      <div class="summary-card">
+        <div class="count count-executing">
+          {{ incidents | selectattr('status', 'equalto', 'EXECUTING') | list |
+          length }}
+        </div>
+        <div class="label">Executing</div>
+      </div>
+      <div class="summary-card">
+        <div class="count count-resolved">
+          {{ incidents | selectattr('status', 'equalto', 'RESOLVED') | list |
+          length }}
+        </div>
+        <div class="label">Resolved</div>
+      </div>
+      <div class="summary-card">
+        <div class="count count-expired">
+          {{ incidents | selectattr('status', 'equalto', 'EXPIRED') | list |
+          length }}
+        </div>
+        <div class="label">Expired</div>
+      </div>
+    </div>
+
+    <div class="section-title">All incidents ({{ incidents | length }})</div>
+
+    {% if incidents %}
+    <table>
+      <thead>
+        <tr>
+          <th>Host</th>
+          <th>IP Address</th>
+          <th>Status</th>
+          <th>Failures</th>
+          <th>Last Fired</th>
+          <th>Incident ID</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inc in incidents %}
+        <tr>
+          <td class="hostname">{{ inc.hostname }}</td>
+          <td class="ip">{{ inc.ip_address }}</td>
+          <td>
+            <span class="status status-{{ inc.status }}">{{ inc.status }}</span>
+          </td>
+          <td class="failures">{{ inc.failure_count }}</td>
+          <td class="fired-at">{{ inc.fired_at }}</td>
+          <td class="ip">{{ inc.incident_id[:8] }}...</td>
+          <td><a class="btn-view" href="{{ inc.link }}">View →</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No incidents recorded yet.</div>
+    {% endif %}
+  </body>
+</html>
