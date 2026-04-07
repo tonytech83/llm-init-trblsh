@@ -1,0 +1,8 @@
+[Unit]
+Description=Dummy failing service for testing
+
+[Service]
+ExecStart=/bin/bash -c 'systemd-cat -p err -t dummy-fail echo "CRITICAL: dummy-fail service encountered a fatal error $(date)"; exit 1'
+
+[Install]
+WantedBy=multi-user.target
