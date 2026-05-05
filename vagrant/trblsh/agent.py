@@ -3,16 +3,18 @@ import os
 import sqlite3
 import uuid
 from datetime import datetime
+from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.types import CallToolResult, TextContent
 
 load_dotenv()
 
@@ -22,8 +24,11 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 # Telegram
-BOT_TOKEN = os.getenv("TOKEN", "")
-CHAT_ID = os.getenv("CHAT_ID", "")
+BOT_TOKEN: str = os.getenv("TOKEN", "")
+CHAT_ID: str = os.getenv("CHAT_ID", "")
+
+# Settings
+TZ = ZoneInfo(os.getenv("TIME_ZONE", ""))
 
 TRBLSH_URL = "http://192.168.56.15:8080"
 
@@ -39,13 +44,13 @@ async def home(request: Request):
     cur = con.cursor()
 
     incidents = cur.execute(
-        """SELECT incident_id, hostname, ip_address, status, fired_at, failure_count 
-           FROM incidents 
-           ORDER BY fired_at DESC"""
+        """SELECT incident_id, hostname, ip_address, status, fired_at, failure_count
+           FROM incidents
+           ORDER BY fired_at DESC""",
     ).fetchall()
     con.close()
 
-    incidents_list = []
+    incidents_list: list[dict[str, str]] = []
     for row in incidents:
         incidents_list.append(
             {
@@ -56,17 +61,19 @@ async def home(request: Request):
                 "fired_at": row[4],
                 "failure_count": row[5],
                 "link": f"{TRBLSH_URL}/alert/{row[0]}",
-            }
+            },
         )
 
     return templates.TemplateResponse(
-        request=request, name="home.html", context={"incidents": incidents_list}
+        request=request,
+        name="home.html",
+        context={"incidents": incidents_list},
     )
 
 
-@app.push("/execute")
+@app.post("/execute")
 async def execute_investigation(request: Request, incident_id: str):
-    # TODO: llm to check the last analysis
+    # TODO(tonytech83): llm to check the last analysis
     pass
 
 
@@ -87,7 +94,7 @@ async def read_incident(request: Request, incident_id: str):
     con.close()
 
     # Parse analysis JSON for each row
-    analyses_parsed = []
+    analyses_parsed: list[dict[str, str]] = []
     for row in analyses:
         analyses_parsed.append(
             {
@@ -95,7 +102,7 @@ async def read_incident(request: Request, incident_id: str):
                 "created_at": row[2],
                 "failed_services": json.loads(row[3]),
                 "analysis": json.loads(row[4]),
-            }
+            },
         )
 
     return templates.TemplateResponse(
@@ -115,7 +122,7 @@ async def read_incident(request: Request, incident_id: str):
 
 
 def prep_message_to_llm(logs: str, host: str, ip: str) -> str:
-    msg = [
+    msg: list[str] = [
         "You are a Linux systems reliability engineer.",
         f"The following services have SIMULTANEOUSLY failed on host '{host}' ({ip}).",
         "This may indicate a common root cause.",
@@ -169,34 +176,32 @@ def prep_message_to_llm(logs: str, host: str, ip: str) -> str:
 
 
 async def json_audit(broken_json: str) -> str:
-    prompt = "\n".join(
+    prompt: str = "\n".join(
         [
             "The following text is supposed to be a valid JSON object but it contains syntax errors.",
             "Your task is to fix ONLY the JSON syntax errors — do not change any values, do not add new fields, do not remove fields.",
             "Respond with ONLY the corrected JSON object, no explanation, no markdown, no backticks.",
             "\n",
-            broken_json,
-        ]
+            str(broken_json),
+        ],
     )
 
     async with httpx.AsyncClient(timeout=OLLAMA_REQUEST_TIMEOUT) as client:
         response = await client.post(
-            OLLAMA_API, json={"model": "qwen2.5:3b", "prompt": prompt, "stream": False}
+            OLLAMA_API,
+            json={"model": "qwen2.5:3b", "prompt": prompt, "stream": False},
         )
         raw = response.json()["response"].strip()
 
         # Strip markdown again in case LLM adds it
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+        raw = raw.removeprefix("json")
 
         return raw.strip()
 
 
 # Receive the Webhook from Alertmanager
 @app.post("/alert")
-async def handle_alert(request: Request):
+async def handle_alert(request: Request) -> dict[str, str]:
     # ==== DB ===========================
     con = sqlite3.connect("db.db")
     cur = con.cursor()
@@ -236,11 +241,13 @@ async def handle_alert(request: Request):
 
     print("=" * 80)
     if status == "resolved":
-        print(f"*** {datetime.now()} - RESOLVED by Loki rule (check loki rule) ...")
+        print(
+            f"*** {datetime.now(tz=TZ)} - RESOLVED by Loki rule (check loki rule) ...",
+        )
         return {"status": "ok"}
 
     print(
-        f"*** {datetime.now()} - Alert {fingerprint} added to active alerts. Host: {hostname} | IP: {ip_address} ..."
+        f"*** {datetime.now(tz=TZ)} - Alert {fingerprint} added to active alerts. Host: {hostname} | IP: {ip_address} ...",
     )
 
     row = cur.execute(
@@ -251,16 +258,18 @@ async def handle_alert(request: Request):
 
     if incident_id:
         cur.execute(
-            """UPDATE incidents 
+            """UPDATE incidents
                 SET failure_count = failure_count + 1,
                     fired_at = ?,
                     status = 'PENDING'
                 WHERE fingerprint = ?
             """,
-            (datetime.now(), fingerprint),
+            (datetime.now(tz=TZ), fingerprint),
         )
         con.commit()
-        print(f"*** {datetime.now()} - Update the incident (already exists in DB) ...")
+        print(
+            f"*** {datetime.now(tz=TZ)} - Update the incident (already exists in DB) ...",
+        )
     else:
         incident_id = str(uuid.uuid4())
         cur.execute(
@@ -273,56 +282,65 @@ async def handle_alert(request: Request):
                 hostname,
                 ip_address,
                 "PENDING",
-                datetime.now().isoformat(),
+                datetime.now(tz=TZ).isoformat(),
                 None,
                 1,
             ),
         )
         con.commit()
-        print(f"*** {datetime.now()} - Create an incident ...")
+        print(f"*** {datetime.now(tz=TZ)} - Create an incident ...")
 
-    async with stdio_client(SERVER_PARAMS) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
+    async with (
+        stdio_client(SERVER_PARAMS) as (read, write),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
 
-            # Step 1: Get failed services (ignore list filtering happens inside)
-            result = await session.call_tool(
-                "get_failed_services",
-                arguments={"hostname": hostname, "ip_address": ip_address},
-            )
-            failed_services = result.content[0].text
-            print(f"*** {datetime.now()} - Failed services:")
-            [print(f"    - {s}") for s in json.loads(failed_services)]
+        # Step 1: Get failed services (ignore list filtering happens inside)
+        result: CallToolResult = await session.call_tool(
+            "get_failed_services",
+            arguments={"hostname": hostname, "ip_address": ip_address},
+        )
 
-            if not failed_services:
-                # TODO: Change status from PENDING to RESOLVED
-                return {"status": "ok"}
+        failed_services: str = (
+            result.content[0].text if isinstance(result.content[0], TextContent) else ""
+        )
+        print(f"*** {datetime.now(tz=TZ)} - Failed services:")
+        [print(f"    - {s}") for s in json.loads(failed_services)]
 
-            # Step 2: Get logs for each failed service
-            result = await session.call_tool(
-                "get_service_logs",
-                arguments={
-                    "hostname": hostname,
-                    "ip_address": ip_address,
-                    "services": failed_services,
-                },
-            )
-            print(f"*** {datetime.now()} - Logs fetched successfully ...")
+        if not failed_services:
+            # TODO: Change status from PENDING to RESOLVED
+            return {"status": "ok"}
 
-            # Failed services logs_dict
-            logs = result.content[0].text
+        # Step 2: Get logs for each failed service
+        result = await session.call_tool(
+            "get_service_logs",
+            arguments={
+                "hostname": hostname,
+                "ip_address": ip_address,
+                "services": failed_services,
+            },
+        )
+        print(f"*** {datetime.now(tz=TZ)} - Logs fetched successfully ...")
 
-            msg = prep_message_to_llm(logs, hostname, ip_address)
-            print(
-                f"*** {datetime.now()} - Prepare message to llm with all needed information for analysis ..."
-            )
+        # Failed services logs_dict
+        logs: str = (
+            result.content[0].text if isinstance(result.content[0], TextContent) else ""
+        )
 
-            # Step 3: llm to execute steps provided by himself
-            # TODO: How and where to be implemented this step
+        msg: str = prep_message_to_llm(logs, hostname, ip_address)
+        print(
+            f"*** {datetime.now(tz=TZ)} - Prepare message to llm with all needed information for analysis ...",
+        )
+
+        # Step 3: llm to execute steps provided by himself
+        # TODO: How and where to be implemented this step
 
     # ==== Send message with logs to Ollama for analysis =============
     llm_analysis = await ask_ollama(msg)
-    print(f"*** {datetime.now()} - Send message to llm and receive the responce ...")
+    print(
+        f"*** {datetime.now(tz=TZ)} - Send message to llm and receive the response ...",
+    )
 
     # ==== Add analysis in db ========================================
     cur.execute(
@@ -332,14 +350,14 @@ async def handle_alert(request: Request):
         (
             str(uuid.uuid4()),
             incident_id,
-            datetime.now().isoformat(),
+            datetime.now(tz=TZ).isoformat(),
             failed_services,
             json.dumps(llm_analysis),
         ),
     )
     con.commit()
     con.close()
-    print(f"*** {datetime.now()} - Save llm analysis into DB ...")
+    print(f"*** {datetime.now(tz=TZ)} - Save llm analysis into DB ...")
 
     # ==== Send to Telegram ==========================
     send_telegram(llm_analysis, incident_id)
@@ -347,19 +365,14 @@ async def handle_alert(request: Request):
     return {"status": "processed"}
 
 
-async def ask_ollama(msg: str) -> dict:
+async def ask_ollama(msg: str) -> Any:
     async with httpx.AsyncClient(timeout=OLLAMA_REQUEST_TIMEOUT) as client:
         llm_response = await client.post(
-            OLLAMA_API, json={"model": "qwen2.5:3b", "prompt": msg, "stream": False}
+            OLLAMA_API,
+            json={"model": "qwen2.5:3b", "prompt": msg, "stream": False},
         )
         raw = llm_response.json()["response"]
-
-        clean = raw.strip()
-        if clean.startswith("```"):
-            clean = clean.split("```")[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
-        clean = clean.strip()
+        clean: str = raw.strip().removeprefix("```").removeprefix("json").strip()
 
         try:
             return json.loads(clean)
@@ -370,10 +383,10 @@ async def ask_ollama(msg: str) -> dict:
             return json.loads(fixed)
 
 
-def send_telegram(message, incident_id):
-    print(f"*** {datetime.now()} - Sending llm analysis to Telegram")
+def send_telegram(message: Any, incident_id: str) -> None:
+    print(f"*** {datetime.now(tz=TZ)} - Sending llm analysis to Telegram")
 
-    telegran_msg = [
+    telegram_msg = [
         f"💻  {message['hostname']}",
         f"📡  {message['ip_address']}",
         f"⚙️  {message['failed_services']}",
@@ -382,16 +395,17 @@ def send_telegram(message, incident_id):
     ]
 
     print("-" * 80)
-    print("\n".join(telegran_msg))
+    print("\n".join(telegram_msg))
     print("-" * 80)
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
-        "text": "\n".join(telegran_msg),
+        "text": "\n".join(telegram_msg),
     }
 
-    response = requests.post(url, json=payload)
+    response = requests.post(url, json=payload, timeout=60)
+    response.raise_for_status()
 
 
 # Run with: uvicorn agent:app --host 0.0.0.0 --port 8080
