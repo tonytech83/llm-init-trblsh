@@ -35,10 +35,11 @@ Vagrant.configure("2") do |config|
 		troubleshooter.vm.network "private_network", ip: "192.168.56.15"
 		troubleshooter.vm.synced_folder "vagrant/", "/vagrant"
 		troubleshooter.vm.provision "shell", path: "scripts/add-hosts.sh"
-		troubleshooter.vm.provision "shell", path: "scripts/install-docker.sh"
-    troubleshooter.vm.provision "shell", path: "scripts/install-docker-registry.sh"
-		troubleshooter.vm.provision "shell", path: "scripts/install-gitea.sh"
-		troubleshooter.vm.provision "shell", path: "scripts/setup-gitea.sh"
+		troubleshooter.vm.provision "shell", path: "scripts/set-and-copy-ssh-key.sh"
+		# troubleshooter.vm.provision "shell", path: "scripts/install-docker.sh"
+    # troubleshooter.vm.provision "shell", path: "scripts/install-docker-registry.sh"
+		# troubleshooter.vm.provision "shell", path: "scripts/install-gitea.sh"
+		# troubleshooter.vm.provision "shell", path: "scripts/setup-gitea.sh"
     troubleshooter.vm.provider "virtualbox" do |vbox|
       vbox.name = "concept-troubleshooter"
       vbox.cpus = 2
