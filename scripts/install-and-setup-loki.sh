@@ -94,7 +94,7 @@ groups:
       interval: 15s
       rules:
         - alert: CriticalLogDetected
-          expr: sum by (host) (count_over_time({job="journald", level=~"err|crit|alert|emerg"}[1m])) > 0
+          expr: sum by (host, ip) (count_over_time({job="journald", level=~"err|crit|alert|emerg"}[1m])) > 0
           labels:
             alertname: CriticalLogDetected
             severity: critical
