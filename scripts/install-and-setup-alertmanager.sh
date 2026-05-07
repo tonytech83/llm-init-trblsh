@@ -32,7 +32,7 @@ route:
 receivers:
   - name: 'web.hook'
     webhook_configs:
-      - url: 'https://webhook.site/8b0d4532-590f-40fe-89b0-d9bc72ee86d5'
+      - url: 'http://192.168.56.15:8080/alert'
 EOF
 
 echo "* Create a systemd unit for Alertmanager ..."
