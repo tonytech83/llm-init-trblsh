@@ -24,36 +24,44 @@ Alloy → Loki → Alertmanager → Agent (MCP Client) → MCP Server
 
 Three Vagrant VMs on a private network (`192.168.56.0/24`), provisioned automatically with shell scripts:
 
-| VM | Hostname | IP | Resources | Services |
-|----|----------|----|-----------|----------|
-| target | target.concept.lab | 192.168.56.13 | 1 CPU / 1 GB | Alloy |
-| monitor | monitor.concept.lab | 192.168.56.14 | 2 CPU / 2 GB | Loki, Alertmanager, Grafana |
+| VM             | Hostname                   | IP            | Resources    | Services                         |
+| -------------- | -------------------------- | ------------- | ------------ | -------------------------------- |
+| target         | target.concept.lab         | 192.168.56.13 | 1 CPU / 1 GB | Alloy, dummy-fail.service        |
+| monitor        | monitor.concept.lab        | 192.168.56.14 | 2 CPU / 2 GB | Loki, Alertmanager, Grafana      |
 | troubleshooter | troubleshooter.concept.lab | 192.168.56.15 | 2 CPU / 4 GB | Agent, MCP Server, Docker, Gitea |
 
 ## Components
 
 ### Alloy (target VM — port 12345)
+
 Grafana Alloy reads the systemd journal and filters log entries at `err`, `crit`, `alert`, and `emerg` priority levels. Logs are labelled and pushed to Loki.
 
 ### Loki (monitor VM — port 3100)
+
 Stores logs and evaluates the `CriticalLogDetected` alert rule:
+
 ```
-sum by (host) (count_over_time({job="journald", level=~"err|crit|alert|emerg"}[1m])) > 0
+sum by (host, ip) (count_over_time({job="journald", level=~"err|crit|alert|emerg"}[1m])) > 0
 ```
+
 Rule is evaluated every 15 seconds. On match, an alert fires to Alertmanager.
 
 ### Alertmanager (monitor VM — port 9093)
+
 Groups alerts by hostname with a 30-second group wait and routes them as HTTP webhooks to the Agent at `http://192.168.56.15:8080/alert`.
 
 ### Grafana (monitor VM — port 3000)
+
 Provides a dashboard for manual log exploration using Loki as a datasource.
 
 ### Agent + MCP Server (troubleshooter VM — port 8080)
+
 A FastAPI webhook receiver (MCP Client) paired with a FastMCP server. Together they collect forensic data from the target host via SSH, run LLM analysis through Ollama, persist incidents in SQLite, serve a web UI, and send Telegram notifications.
 
 See [vagrant/trblsh/README.md](vagrant/trblsh/README.md) for full details: API endpoints, MCP tools, database schema, LLM prompt and output format, configuration reference, and known limitations.
 
 ### Ollama (external)
+
 A local Ollama instance (default: `http://192.168.0.88:11434`) serves the `qwen2.5:3b` model. The address is configurable in the Agent's environment. Any Ollama-compatible model can be substituted.
 
 ## Prerequisites
@@ -74,35 +82,36 @@ vagrant up
 
 All three VMs are provisioned automatically. This installs and configures Alloy, Loki, Alertmanager, Grafana, Docker, Gitea, and the Docker registry.
 
-### 2. Configure Alertmanager webhook
+### 2. Start the Troubleshooter FastAPI app
 
-Update `/etc/alertmanager/alertmanager.yml` on the monitor VM to point to the Agent:
+Do ssh to troubleshooter `vagrant ssh troubleshooter`:
 
-```yaml
-receivers:
-  - name: webhook
-    webhook_configs:
-      - url: "http://192.168.56.15:8080/alert"
+```sh
+cd /vagrant/trblsh
+
+source .venv/bin/activate
+
+uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
-
-Restart Alertmanager after the change:
-```bash
-sudo systemctl restart alertmanager
-```
-
-### 3. Set up and start the Agent
-
-See [vagrant/trblsh/README.md](vagrant/trblsh/README.md) for SSH key setup, environment configuration, installation, and how to start the Agent.
-
-The web UI is available at `http://192.168.56.15:8080`.
 
 ## Testing
 
+Do ssh to target VM `vagrant ssh target`
+
+```sh
+cd /vagrant/target
+
+sudo cp dummy-fail.service /etc/systemd/system
+
+sudo systemctl daemon-reload
+sudo systemctl enable dummy-fail.service
+sudo systemctl start dummy-fail.service
+```
+
 A dummy failing service and a helper script are provided on the target VM:
 
-```bash
-vagrant ssh target
-bash /vagrant/target/create_event.sh
+```sh
+./create_event.sh
 ```
 
 This starts `dummy-fail.service`, which immediately fails and produces error-level journal entries. Within ~1 minute the alert fires and the Agent processes the incident. Check the UI or your Telegram chat for the result.
@@ -121,6 +130,7 @@ This starts `dummy-fail.service`, which immediately fails and produces error-lev
 │   ├── install-docker.sh
 │   ├── install-docker-registry.sh
 │   ├── install-gitea.sh
+│   ├── set-and-copy-ssh-key.sh
 │   └── setup-gitea.sh
 └── vagrant/
     ├── gitea/
@@ -141,10 +151,10 @@ This starts `dummy-fail.service`, which immediately fails and produces error-lev
 
 ## Configuration Reference
 
-| Setting | Location | Default | Description |
-|---------|----------|---------|-------------|
-| Alert group wait | `alertmanager.yml` | 30s | Delay before first alert fires |
-| Alert repeat interval | `alertmanager.yml` | 2m | Interval for repeat alerts |
-| Loki rule evaluation | `journald-logs.yaml` | 15s | How often alert rule is checked |
+| Setting               | Location             | Default | Description                     |
+| --------------------- | -------------------- | ------- | ------------------------------- |
+| Alert group wait      | `alertmanager.yml`   | 30s     | Delay before first alert fires  |
+| Alert repeat interval | `alertmanager.yml`   | 2m      | Interval for repeat alerts      |
+| Loki rule evaluation  | `journald-logs.yaml` | 15s     | How often alert rule is checked |
 
 For Agent and MCP Server configuration (Ollama URL, model, SSH key, Telegram credentials, ignore list) see [vagrant/trblsh/README.md](vagrant/trblsh/README.md).
