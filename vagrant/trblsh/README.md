@@ -154,31 +154,21 @@ Webhook receiver for Alertmanager. Expects the standard Alertmanager webhook pay
 - Runs the MCP tool chain and LLM analysis
 - Returns `{"status": "processed"}` on success
 
-### `POST /execute`
-
-_(stub)_ Planned endpoint for LLM-driven autonomous investigation execution.
-
 ### `GET /`
+
+![Incident overview](./docs/incident_overview.png/)
 
 Incident list. Shows all incidents ordered by most recently fired with summary counters by status.
 
 ### `GET /alert/{incident_id}`
 
+![Incident overview](./docs/incident_detail.png)
+
 Incident detail. Shows the latest LLM analysis prominently, with previous analyses collapsed in a history accordion.
 
-## Screenshots
+### `POST /execute`
 
-### Incident overview
-
-<!-- TODO: replace with actual screenshot -->
-
-![Incident overview](docs/screenshots/incident-overview.png)
-
-### Incident detail — current host
-
-<!-- TODO: replace with actual screenshot -->
-
-![Incident detail](docs/screenshots/incident-detail.png)
+_(stub)_ Planned endpoint for LLM-driven autonomous investigation execution.
 
 ## MCP Server tools
 
